@@ -39,6 +39,8 @@ void serial_init()
   serial_rx_buffer.data = malloc(RX_BUFFER_SIZE * sizeof(uint8_t));
   serial_tx_buffer.data = malloc(TX_BUFFER_SIZE * sizeof(uint8_t));
 
+  // memset(&serial_rx_buffer.data, 0, RX_BUFFER_SIZE * sizeof(uint8_t));
+  // memset(&serial_tx_buffer.data, 0, TX_BUFFER_SIZE * sizeof(uint8_t));
 // Set baud rate
 #if BAUD_RATE < 57600
   uint16_t UBRR0_value = ((F_CPU / (8L * DEFAULT_BAUD_RATE)) - 1) / 2;

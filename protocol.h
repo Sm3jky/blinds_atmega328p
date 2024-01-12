@@ -7,6 +7,7 @@
 #define LINE_BUFFER_SIZE 80
 #endif
 
+void print_welcome_message();
 void protocol_main_loop();
 
 #endif

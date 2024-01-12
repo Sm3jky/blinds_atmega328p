@@ -1,10 +1,18 @@
 #include "protocol.h"
 
+void print_welcome_message()
+{
+    printPgmString(PSTR("Blinz started!"));
+    printPgmString(PSTR("\r\n"));
+}
+
 void protocol_main_loop()
 {
     static char line[LINE_BUFFER_SIZE];
     uint8_t c = 0;
     uint8_t char_counter = 0;
+    serial_init(); // Setup serial baud rate and interrupts
+    print_welcome_message();
 
     for (;;)
     {

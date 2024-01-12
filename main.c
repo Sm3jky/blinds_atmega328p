@@ -8,7 +8,6 @@ ISR(TIMER1_COMPA_vect)
 
 int main(void)
 {
-    serial_init(); // Setup serial baud rate and interrupts
     LED_DDR |= (1 << LED_BIT);
     // // Nastavení režimu CTC (WGM12) a předděliče 1024 (CS12, CS10)
     // TCCR0A |= (1 << WGM01);
@@ -26,9 +25,6 @@ int main(void)
     for (;;)
     {
         // init all, before loop
-        printPgmString(PSTR("Blinz started!"));
-        printPgmString(PSTR("\r\n"));
-
         protocol_main_loop(); // loop
     }
 
