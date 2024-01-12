@@ -21,6 +21,6 @@
 #include <stdbool.h>
 
 // Define the Blinz system include files
-
+#include "cpu_map/atmega328p.h"
 
 #endif
