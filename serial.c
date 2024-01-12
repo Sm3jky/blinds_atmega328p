@@ -167,16 +167,3 @@ void serial_reset_read_buffer()
 {
   serial_rx_buffer.tail = serial_rx_buffer.head;
 }
-
-void printPgmString(const char *s)
-{
-  char c;
-  while ((c = pgm_read_byte_near(s++)))
-    serial_write(c);
-}
-
-void printString(const char *s)
-{
-  while (*s)
-    serial_write(*s++);
-}

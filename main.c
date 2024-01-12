@@ -22,6 +22,10 @@ int main(void)
     // // Globální povolení přerušení
     sei();
 
+    serial_init(); // Setup serial baud rate and interrupts
+    print_welcome_message();
+    bcode_init();
+
     for (;;)
     {
         // init all, before loop

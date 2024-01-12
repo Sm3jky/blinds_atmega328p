@@ -30,8 +30,4 @@ uint8_t serial_get_rx_buffer_count();
 // NOTE: Not used except for debugging and ensuring no TX bottlenecks.
 uint8_t serial_get_tx_buffer_count();
 
-// in a future move it to another file
-void printPgmString(const char *s);
-void printString(const char *s);
-
 #endif

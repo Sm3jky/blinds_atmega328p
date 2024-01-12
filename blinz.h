@@ -24,5 +24,8 @@
 #include "config.h"
 #include "cpu_map/atmega328p.h"
 #include "serial.h"
+#include "protocol.h"
+#include "print.h"
+#include "bcode.h"
 
 #endif

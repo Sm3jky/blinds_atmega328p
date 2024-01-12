@@ -5,4 +5,6 @@
 
 #define BAUD_RATE 115200
 
+#define DEBUG 1
+
 #endif
