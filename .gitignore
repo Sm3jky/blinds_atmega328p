@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# hex
+*.hex
+
+# directories
+.vscode/
