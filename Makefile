@@ -31,7 +31,7 @@
 DEVICE     ?= atmega328p
 CLOCK      = 16000000
 PROGRAMMER ?= -c arduino -P /dev/ttyACM0
-SOURCE    = main.c serial.c
+SOURCE    = main.c serial.c protocol.c
 BUILDDIR = build
 SOURCEDIR = ./
 # FUSES      = -U hfuse:w:0xd9:m -U lfuse:w:0x24:m

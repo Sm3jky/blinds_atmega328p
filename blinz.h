@@ -23,5 +23,6 @@
 // Define the Blinz system include files
 #include "config.h"
 #include "cpu_map/atmega328p.h"
+#include "serial.h"
 
 #endif

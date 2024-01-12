@@ -1,45 +1,47 @@
-#include "serial.h"
+#include "config.h"
 
-uint8_t serial_rx_buffer[RX_BUFFER_SIZE];
-uint8_t serial_rx_buffer_head = 0;
-volatile uint8_t serial_rx_buffer_tail = 0;
+#define SERIAL_RX USART_RX_vect
+#define SERIAL_UDRE USART_UDRE_vect
 
-uint8_t serial_tx_buffer[TX_BUFFER_SIZE];
-uint8_t serial_tx_buffer_head = 0;
-volatile uint8_t serial_tx_buffer_tail = 0;
+typedef struct
+{
+  uint8_t *data;
+  uint8_t head;
+  volatile uint8_t tail;
+} queue;
 
-#ifdef ENABLE_XONXOFF
-volatile uint8_t flow_ctrl = XON_SENT; // Flow control state variable
-#endif
+queue serial_rx_buffer = {.head = 0, .tail = 0};
+queue serial_tx_buffer = {.head = 0, .tail = 0};
 
-// Returns the number of bytes used in the RX serial buffer.
 uint8_t serial_get_rx_buffer_count()
 {
-  uint8_t rtail = serial_rx_buffer_tail; // Copy to limit multiple calls to volatile
-  if (serial_rx_buffer_head >= rtail)
+  uint8_t rtail = serial_rx_buffer.tail; // Copy to limit multiple calls to volatile
+  if (serial_rx_buffer.head >= rtail)
   {
-    return (serial_rx_buffer_head - rtail);
+    return (serial_rx_buffer.head - rtail);
   }
-  return (RX_BUFFER_SIZE - (rtail - serial_rx_buffer_head));
+  return (RX_BUFFER_SIZE - (rtail - serial_rx_buffer.head));
 }
 
-// Returns the number of bytes used in the TX serial buffer.
-// NOTE: Not used except for debugging and ensuring no TX bottlenecks.
 uint8_t serial_get_tx_buffer_count()
 {
-  uint8_t ttail = serial_tx_buffer_tail; // Copy to limit multiple calls to volatile
-  if (serial_tx_buffer_head >= ttail)
+  uint8_t ttail = serial_tx_buffer.tail;
+  if (serial_tx_buffer.head >= ttail)
   {
-    return (serial_tx_buffer_head - ttail);
+    return (serial_tx_buffer.head - ttail);
   }
-  return (TX_BUFFER_SIZE - (ttail - serial_tx_buffer_head));
+  return (TX_BUFFER_SIZE - (ttail - serial_tx_buffer.head));
 }
 
 void serial_init()
 {
+  // buffer init
+  serial_rx_buffer.data = malloc(RX_BUFFER_SIZE * sizeof(uint8_t));
+  serial_tx_buffer.data = malloc(TX_BUFFER_SIZE * sizeof(uint8_t));
+
 // Set baud rate
 #if BAUD_RATE < 57600
-  uint16_t UBRR0_value = ((F_CPU / (8L * BAUD_RATE)) - 1) / 2;
+  uint16_t UBRR0_value = ((F_CPU / (8L * DEFAULT_BAUD_RATE)) - 1) / 2;
   UCSR0A &= ~(1 << U2X0); // baud doubler off  - Only needed on Uno XXX
 #else
   uint16_t UBRR0_value = ((F_CPU / (4L * BAUD_RATE)) - 1) / 2;
@@ -48,100 +50,91 @@ void serial_init()
   UBRR0H = UBRR0_value >> 8;
   UBRR0L = UBRR0_value;
 
-  // enable rx and tx
+  // deaktivace pinu 0, 1 jako digital out/in, ale nastaveni jako UART
   UCSR0B |= 1 << RXEN0;
   UCSR0B |= 1 << TXEN0;
 
-  // enable interrupt on complete reception of a byte
+  // povoleni interuptu, abych mohl potvrdit, že je cely jeden byte poslan
   UCSR0B |= 1 << RXCIE0;
-
-  // defaults to 8-bit, no parity, 1 stop bit
 }
 
-// Writes one byte to the TX serial buffer. Called by main program.
-// TODO: Check if we can speed this up for writing strings, rather than single bytes.
+void serial_cleanup()
+{ // clean all dynamic memory
+  if (serial_rx_buffer.data != NULL)
+  {
+    free(serial_rx_buffer.data);
+    serial_rx_buffer.data = NULL;
+  }
+
+  if (serial_tx_buffer.data != NULL)
+  {
+    free(serial_tx_buffer.data);
+    serial_tx_buffer.data = NULL;
+  }
+}
+
 void serial_write(uint8_t data)
 {
-  // Calculate next head
-  uint8_t next_head = serial_tx_buffer_head + 1;
+  // další hlavay queue
+  uint8_t next_head = serial_tx_buffer.head + 1;
   if (next_head == TX_BUFFER_SIZE)
   {
     next_head = 0;
   }
 
-  // Store data and advance head
-  serial_tx_buffer[serial_tx_buffer_head] = data;
-  serial_tx_buffer_head = next_head;
+  // čeká na místo v queue
+  while (next_head == serial_tx_buffer.tail)
+  { // > 64
+    // loop cekani
+  }
 
-  // Enable Data Register Empty Interrupt to make sure tx-streaming is running
+  // uložení dat
+  serial_tx_buffer.data[serial_tx_buffer.head] = data;
+  serial_tx_buffer.head = next_head;
+
+  // Povolte přerušení prázdného registru dat, abyste se ujistili, že běží tx-streaming
   UCSR0B |= (1 << UDRIE0);
 }
 
-// Data Register Empty Interrupt handler
 ISR(SERIAL_UDRE)
 {
-  uint8_t tail = serial_tx_buffer_tail; // Temporary serial_tx_buffer_tail (to optimize for volatile)
+  uint8_t tail = serial_tx_buffer.tail;
+  // pop 1 bytu z queue
+  UDR0 = serial_tx_buffer.data[tail];
 
-#ifdef ENABLE_XONXOFF
-  if (flow_ctrl == SEND_XOFF)
+  // update tailu
+  tail++;
+  if (tail == TX_BUFFER_SIZE)
   {
-    UDR0 = XOFF_CHAR;
-    flow_ctrl = XOFF_SENT;
-  }
-  else if (flow_ctrl == SEND_XON)
-  {
-    UDR0 = XON_CHAR;
-    flow_ctrl = XON_SENT;
-  }
-  else
-#endif
-  {
-    // Send a byte from the buffer
-    UDR0 = serial_tx_buffer[tail];
-
-    // Update tail position
-    tail++;
-    if (tail == TX_BUFFER_SIZE)
-    {
-      tail = 0;
-    }
-
-    serial_tx_buffer_tail = tail;
+    tail = 0;
   }
 
-  // Turn off Data Register Empty Interrupt to stop tx-streaming if this concludes the transfer
-  if (tail == serial_tx_buffer_head)
+  serial_tx_buffer.tail = tail;
+
+  // vypněte Data Register Empty Interrupt pro zastavení TX-streamingu, pokud se tím přenos ukončí
+  if (tail == serial_tx_buffer.head)
   {
     UCSR0B &= ~(1 << UDRIE0);
   }
 }
 
-// Fetches the first byte in the serial read buffer. Called by main program.
 uint8_t serial_read()
 {
-  uint8_t tail = serial_rx_buffer_tail; // Temporary serial_rx_buffer_tail (to optimize for volatile)
-  if (serial_rx_buffer_head == tail)
+  uint8_t tail = serial_rx_buffer.tail; // dočasný tail bufferu
+  if (serial_rx_buffer.head == tail)
   {
     return SERIAL_NO_DATA;
   }
   else
   {
-    uint8_t data = serial_rx_buffer[tail];
+    uint8_t data = serial_rx_buffer.data[tail];
 
     tail++;
     if (tail == RX_BUFFER_SIZE)
     {
       tail = 0;
     }
-    serial_rx_buffer_tail = tail;
-
-#ifdef ENABLE_XONXOFF
-    if ((serial_get_rx_buffer_count() < RX_BUFFER_LOW) && flow_ctrl == XOFF_SENT)
-    {
-      flow_ctrl = SEND_XON;
-      UCSR0B |= (1 << UDRIE0); // Force TX
-    }
-#endif
+    serial_rx_buffer.tail = tail;
 
     return data;
   }
@@ -152,35 +145,36 @@ ISR(SERIAL_RX)
   uint8_t data = UDR0;
   uint8_t next_head;
 
-  next_head = serial_rx_buffer_head + 1;
+  // push characteru
+  next_head = serial_rx_buffer.head + 1;
   if (next_head == RX_BUFFER_SIZE)
   {
     next_head = 0;
   }
 
-  // Write data to buffer unless it is full.
-  if (next_head != serial_rx_buffer_tail)
+  // zapisování dat do bufferu dokud není full
+  if (next_head != serial_rx_buffer.tail)
   {
-    serial_rx_buffer[serial_rx_buffer_head] = data;
-    serial_rx_buffer_head = next_head;
-
-#ifdef ENABLE_XONXOFF
-    if ((serial_get_rx_buffer_count() >= RX_BUFFER_FULL) && flow_ctrl == XON_SENT)
-    {
-      flow_ctrl = SEND_XOFF;
-      UCSR0B |= (1 << UDRIE0); // Force TX
-    }
-#endif
-
-    // TODO: else alarm on overflow?
+    serial_rx_buffer.data[serial_rx_buffer.head] = data;
+    serial_rx_buffer.head = next_head;
   }
+  // tady nemám alarm na přetečení
 }
 
 void serial_reset_read_buffer()
 {
-  serial_rx_buffer_tail = serial_rx_buffer_head;
+  serial_rx_buffer.tail = serial_rx_buffer.head;
+}
 
-#ifdef ENABLE_XONXOFF
-  flow_ctrl = XON_SENT;
-#endif
+void printPgmString(const char *s)
+{
+  char c;
+  while ((c = pgm_read_byte_near(s++)))
+    serial_write(c);
+}
+
+void printString(const char *s)
+{
+  while (*s)
+    serial_write(*s++);
 }
